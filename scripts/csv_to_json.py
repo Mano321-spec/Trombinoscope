@@ -1,78 +1,89 @@
 #!/usr/bin/env python3
 """
-Convertit people.csv en data.json pour le site "Qui est-ce · Pollux".
+Convertit equipe.csv (export Excel OneDrive) en data.json.
+
+Colonnes attendues dans le CSV :
+    Prénom, Nom, URL Photo, Date d'arrivée, Ancienneté, Métier,
+    Activité, Localisation, MINT, MINTs (multi), Hobby (catégorie), Hobby (détail)
 
 Usage :
-    python3 csv_to_json.py people.csv data.json
-
-Colonnes attendues dans le CSV (encodage UTF-8, séparateur ";") :
-    prenom, nom, photo, anciennete, metier, activite, localisation,
-    hobby_cat, hobby_label, mint, mints_supplementaires
-
-- "photo"               : nom du fichier dans le dossier /photos (ex: agathe-vallet.jpg)
-- "mint"                : le MINT principal (laisser vide si aucun)
-- "mints_supplementaires": autres MINT séparés par des "/" (ex: "Paillette/Sporting Club")
-                           laisser vide si la personne n'a qu'un seul MINT
-
-Valeurs attendues pour "anciennete" (copier-coller exact avec l'emoji) :
-    🐣 < 1 an   |   🦄 1–3 ans   |   🦖 3–6 ans   |   🐦‍🔥 > 6 ans
-
-Valeurs attendues pour "metier" : CP, DEV, IX, OPS, UI, UX
-Valeurs attendues pour "activite" : Castor, Docaposte, LAB, La Poste, Opérations
-Valeurs attendues pour "localisation" : Région Parisienne, Province
+    python3 scripts/csv_to_json.py equipe.csv data.json
 """
 import csv
 import json
+import re
 import sys
 
 
-def parse_row(row):
-    mint = (row.get("mint") or "").strip() or None
-    extra = [m.strip() for m in (row.get("mints_supplementaires") or "").split("/") if m.strip()]
+def slugify(text):
+    text = text.lower().strip()
+    for src, dst in [("àáâãä","a"),("èéêë","e"),("ìíîï","i"),("òóôõö","o"),("ùúûü","u"),("ç","c"),("ñ","n")]:
+        for c in src:
+            text = text.replace(c, dst)
+    text = re.sub(r"[^a-z0-9\s-]", "", text)
+    return re.sub(r"\s+", "-", text)
 
-    mints = []
-    if mint:
-        mints.append(mint)
-    mints.extend(extra)
 
-    is_multi = len(mints) > 1
-    mint_field = "Multi-MINT" if is_multi else mint
+def parse_bool(val):
+    return str(val).strip().lower() in ("oui", "true", "1", "yes", "vrai")
+
+
+def parse_mints(val):
+    if not val or not val.strip():
+        return []
+    return [m.strip() for m in re.split(r"[,;/]", val) if m.strip()]
+
+
+def parse_row(row, index):
+    prenom = row.get("Prénom", row.get("Prenom", "")).strip()
+    nom = row.get("Nom", "").strip()
+
+    photo_val = row.get("URL Photo", "").strip()
+    if photo_val and not photo_val.startswith("photos/"):
+        photo_val = "photos/" + photo_val
+    elif not photo_val and (prenom or nom):
+        photo_val = f"photos/{slugify(prenom + ' ' + nom)}-{index}.jpg"
+
+    mint_val = row.get("MINT", "").strip() or None
+    mints_raw = row.get("MINTs (multi)", "").strip()
+    mint_multi = parse_bool(row.get("MINTs (multi)", "")) if mints_raw.lower() in ("oui","true","1","yes","vrai") else bool(mints_raw and mints_raw.lower() not in ("non","false","0","no"))
+    mints = parse_mints(mints_raw) if mint_multi else []
 
     return {
-        "prenom": (row.get("prenom") or "").strip(),
-        "nom": (row.get("nom") or "").strip(),
-        "photo": f"photos/{(row.get('photo') or '').strip()}",
-        "anciennete": (row.get("anciennete") or "").strip(),
-        "hobby_cat": (row.get("hobby_cat") or "").strip() or None,
-        "hobby_label": (row.get("hobby_label") or "").strip() or None,
-        "mint": mint_field,
-        "mint_multi": is_multi,
-        "metier": (row.get("metier") or "").strip(),
-        "localisation": (row.get("localisation") or "").strip(),
-        "activite": (row.get("activite") or "").strip(),
+        "prenom": prenom,
+        "nom": nom,
+        "photo": photo_val,
+        "anciennete": row.get("Ancienneté", row.get("Anciennete", "")).strip() or None,
+        "metier": row.get("Métier", row.get("Metier", "")).strip() or None,
+        "activite": row.get("Activité", row.get("Activite", "")).strip() or None,
+        "localisation": row.get("Localisation", "").strip() or None,
+        "mint": mint_val,
+        "mint_multi": mint_multi,
+        "hobby_cat": row.get("Hobby (catégorie)", row.get("Hobby (categorie)", "")).strip() or None,
+        "hobby_label": row.get("Hobby (détail)", row.get("Hobby (detail)", "")).strip() or None,
         "mints": mints,
     }
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: python3 csv_to_json.py people.csv data.json")
-        sys.exit(1)
-
-    csv_path, json_path = sys.argv[1], sys.argv[2]
+    csv_path = sys.argv[1] if len(sys.argv) > 1 else "equipe.csv"
+    json_path = sys.argv[2] if len(sys.argv) > 2 else "data.json"
 
     with open(csv_path, encoding="utf-8-sig", newline="") as f:
-        # Détecte automatiquement ; ou , comme séparateur
-        sample = f.read(2048)
+        sample = f.read(4096)
         f.seek(0)
         delimiter = ";" if sample.count(";") >= sample.count(",") else ","
         reader = csv.DictReader(f, delimiter=delimiter)
-        people = [parse_row(row) for row in reader if (row.get("prenom") or "").strip()]
+        people = [
+            parse_row(row, i)
+            for i, row in enumerate(reader)
+            if (row.get("Prénom", row.get("Prenom", "")) or "").strip()
+        ]
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(people, f, ensure_ascii=False, indent=2)
 
-    print(f"OK : {len(people)} personnes écrites dans {json_path}")
+    print(f"✅ {len(people)} personnes → {json_path}")
 
 
 if __name__ == "__main__":

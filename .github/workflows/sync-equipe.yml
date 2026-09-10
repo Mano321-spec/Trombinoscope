@@ -1,0 +1,24 @@
+name: Sync équipe CSV → data.json
+
+on:
+  push:
+    paths:
+      - 'equipe.csv'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Convertir CSV en JSON
+        run: python3 scripts/csv_to_json.py equipe.csv data.json
+
+      - name: Commit data.json si modifié
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git diff --cached --quiet || git commit -m "sync: mise à jour data.json depuis equipe.csv"
+          git push

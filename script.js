@@ -93,9 +93,9 @@ function buildCard(p, idx) {
   // Photo
   const photoRing = document.createElement('div');
   photoRing.className = 'photo-ring';
-  if (p.photo_b64) {
+  if (p.photo) {
     const img = document.createElement('img');
-    img.src = p.photo_b64;
+    img.src = p.photo;
     img.alt = p.prenom + ' ' + p.nom;
     img.onerror = () => { photoRing.innerHTML = '<i class="ti ti-user"></i>'; };
     photoRing.appendChild(img);
@@ -296,9 +296,9 @@ function openModal(idx) {
   // Photo
   const mPhoto = document.getElementById('mPhoto');
   mPhoto.innerHTML = '';
-  if (p.photo_b64) {
+  if (p.photo) {
     const img = document.createElement('img');
-    img.src = p.photo_b64;
+    img.src = p.photo;
     img.onerror = () => { mPhoto.innerHTML = '<i class="ti ti-user"></i>'; };
     mPhoto.appendChild(img);
   } else {
